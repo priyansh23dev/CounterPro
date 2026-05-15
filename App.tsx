@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useCounter } from './src/useCounter';
+import { useNativeCounter } from './src/useNativeCounter';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const C = {
@@ -100,7 +100,7 @@ export default function App() {
     longPressIncrement,
     decrement,
     reset,
-  } = useCounter();
+  } = useNativeCounter();
 
   const nextBonusIn = 5 - (incrementCalls % 5);
   const isBonus = nextBonusIn === 5 && incrementCalls > 0;
@@ -112,6 +112,9 @@ export default function App() {
       {/* ── Header ─────────────────────────────────────── */}
       <View style={styles.header}>
         <Text style={styles.appTitle}>CounterPro</Text>
+        <View style={styles.nativeBadge}>
+          <Text style={styles.nativeBadgeText}>C++ · TURBOMODULE</Text>
+        </View>
       </View>
 
       {/* ── Counter display ────────────────────────────── */}
@@ -227,6 +230,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 4,
     color: C.text,
+  },
+  nativeBadge: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: C.bonus,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  nativeBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 2,
+    color: C.bonus,
   },
 
   // Display card
