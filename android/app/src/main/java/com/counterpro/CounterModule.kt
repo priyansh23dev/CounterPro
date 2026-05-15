@@ -109,10 +109,6 @@ class CounterModule(reactContext: ReactApplicationContext) :
 
     override fun getValue(): Double = nativeGetValue().toDouble()
 
-    // Required by RCTEventEmitter contract — no-op bodies are intentional.
-    override fun addListener(eventName: String) {}
-    override fun removeListeners(count: Double) {}
-
     // ── Timer helpers ────────────────────────────────────────────────────────────
     private fun scheduleAutoDecrement() {
         handler.removeCallbacks(idleRunnable)

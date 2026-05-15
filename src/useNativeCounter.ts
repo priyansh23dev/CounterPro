@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { NativeEventEmitter } from 'react-native';
+import { DeviceEventEmitter } from 'react-native';
 import CounterModule from './NativeCounterModule';
 import { HISTORY_LIMIT } from './useCounter';
-
-// One shared emitter — safe to create at module scope.
-const emitter = new NativeEventEmitter(CounterModule as any);
 
 /**
  * Same public interface as useCounter so App.tsx can swap between
@@ -12,10 +9,13 @@ const emitter = new NativeEventEmitter(CounterModule as any);
  *
  * State flow:
  *   User press → call native method → C++ mutates count → Kotlin emits event
- *   → NativeEventEmitter fires → this hook updates React state → UI re-renders
+ *   via RCTDeviceEventEmitter → DeviceEventEmitter fires in JS
+ *   → this hook updates React state → UI re-renders
  *
- * History and UI-status flags are managed here in JS;
- * core counter logic (bonus, floor, timers) is in native (C++ + Kotlin).
+ * We use DeviceEventEmitter (not NativeEventEmitter) because Kotlin emits
+ * through RCTDeviceEventEmitter, which maps directly to DeviceEventEmitter in JS.
+ * NativeEventEmitter requires real addListener/removeListeners accounting which
+ * causes "platform constants" warnings when the methods are no-ops.
  */
 export function useNativeCounter() {
   const [count, setCount] = useState<number>(() => CounterModule.getValue());
@@ -29,7 +29,7 @@ export function useNativeCounter() {
   const isAutoDecrementingRef = useRef(false);
 
   useEffect(() => {
-    const counterSub = emitter.addListener(
+    const counterSub = DeviceEventEmitter.addListener(
       'CounterChanged',
       ({ value, incrementCalls: calls }: { value: number; incrementCalls: number }) => {
         setCount(value);
@@ -42,7 +42,7 @@ export function useNativeCounter() {
       },
     );
 
-    const statusSub = emitter.addListener(
+    const statusSub = DeviceEventEmitter.addListener(
       'CounterStatusChanged',
       ({
         isAutoDecrementing: autoDecr,

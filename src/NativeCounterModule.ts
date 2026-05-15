@@ -16,10 +16,6 @@ export interface Spec extends TurboModule {
   reset(): void;                // gradual in Kotlin; bonus counter reset in C++
 
   getValue(): number;
-
-  // Required boilerplate for RCTEventEmitter support.
-  addListener(eventName: string): void;
-  removeListeners(count: number): void;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('CounterModule');
