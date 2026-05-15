@@ -1,78 +1,97 @@
-# CounterPro
+# CounterPro — React Native Counter App
 
-A React Native counter app demonstrating non-trivial state management, timer-driven behaviour, and clean separation between logic and UI.
+A React Native counter app built as part of a mobile engineering assignment. This branch (`js-implementation`) contains the pure JavaScript/TypeScript implementation. The TurboModule (C++ native) implementation is on the `turbomodule-implementation` branch.
+
+## Demo Video
+
+[Watch Demo](https://drive.google.com/file/d/1zN5o8FvdTEAtnDg9Vk65NOjamoi6UXNz/view?usp=sharing)
 
 ---
 
-## Logic structure
+## How the logic is structured
 
-All counter logic lives in **`src/useCounter.ts`** as a single custom hook. `App.tsx` is pure UI — it calls the hook and renders. No business logic lives in the component tree.
+All counter logic lives in a single custom hook: [`src/useCounter.ts`](src/useCounter.ts). The component (`App.tsx`) only handles rendering — it calls the hook and maps state to UI. There is no business logic in the component tree.
 
-### State
+This separation means the logic can be tested or swapped independently of the UI. The TurboModule branch keeps the exact same `App.tsx` interface; only the hook changes.
 
-| State | Type | Where |
-|---|---|---|
-| `count` | `number` | `useState` — drives the display |
-| `history` | `number[]` | `useState` — last 10 distinct values |
-| `isAutoDecrementing` | `boolean` | `useState` — UI status indicator |
-| `isResetting` | `boolean` | `useState` — UI status indicator |
-| `incrementCalls` | `number` | `useState` — counts calls to `increment()` for the bonus rule |
+---
 
-**Why `useState` and not a reducer?**
-Each piece of state has a different update cadence. Keeping them separate lets React batch the updates that happen together (in user-triggered callbacks) while still allowing independent updates from timer callbacks. A reducer would have forced all state into one object and made the timer logic significantly more complex.
+## Where the state is stored and why
 
-**Refs for timer callbacks**
-`countRef` and `incrementCallsRef` mirror their corresponding state values so that `setInterval` / `setTimeout` callbacks always read the current value without depending on a stale closure. The pattern is: update the ref *and* call `setState` in the same synchronous pass.
+State is split across multiple `useState` calls rather than a single reducer:
+
+| State | Why it's separate |
+|---|---|
+| `count` | Core value — updated on every interaction and every timer tick |
+| `incrementCalls` | Only updates on `increment()` calls, not on auto-decrement ticks |
+| `history` | Append-only log; decoupled from count so flooding is easy to prevent |
+| `isAutoDecrementing` | UI-only flag with its own lifecycle |
+| `isResetting` | UI-only flag with its own lifecycle |
+
+Each piece has a different update cadence. Keeping them separate lets React batch what belongs together (multiple updates from a single button press) while still updating independently from timer callbacks.
+
+**Why refs alongside state?**  
+`countRef` and `incrementCallsRef` mirror their `useState` twins. `setInterval` / `setTimeout` callbacks capture variables at creation time, so they'd read a stale count without refs. The pattern I settled on: update the ref and call `setState` in the same synchronous step — the ref keeps the timer callback correct, the state triggers the re-render.
 
 ---
 
 ## Non-trivial behaviours
 
-### 1. Every 5th increment gives +5
-`incrementCalls` tracks how many times the user has pressed Increment. When `incrementCalls % 5 === 0` the delta is 5 instead of 1. The UI shows a "NEXT BONUS IN N PRESSES" countdown and lights up "BONUS +5 READY" when the next press will trigger it.
+### 1. Every 5th increment → +5
+`incrementCalls` tracks button presses. When `incrementCalls % 5 === 0` the delta becomes 5 instead of 1. The UI counts down ("NEXT BONUS IN 3 PRESSES") and shows "BONUS +5 READY" when the next press will trigger it.
 
 ### 2. Decrement floor at 0
-`decrement()` returns early when `countRef.current <= 0`. The count never goes negative.
+`decrement()` exits early when `countRef.current <= 0`. The value never goes negative — the C check happens before any state update.
 
-### 3. Auto-decrement after idle
-After every user interaction, `scheduleAutoDecrement()` clears any pending idle timer and sets a new 3-second `setTimeout`. When it fires, a 1-second `setInterval` starts decrementing the counter until it reaches 0. Any new user interaction cancels both the idle timer and the decrement interval immediately.
+### 3. Auto-decrement after 3 s idle
+After every user interaction, `scheduleAutoDecrement()` cancels any pending idle timer and sets a fresh 3-second `setTimeout`. When it fires, a 1-second `setInterval` starts decrementing until count hits 0. Any user interaction (tap, long-press, reset) cancels both the idle timer and the decrement interval immediately.
 
 ### 4. Gradual reset
-`reset()` starts a `setInterval` that fires every 80 ms. Each tick reduces the count by `max(1, ceil(count × 0.15))` — roughly 15 % of the remaining value. This produces a fast initial drop that slows as it approaches 0, giving a smooth visual decay rather than an instant jump. The interval clears itself (and `isResetting` becomes false) once count reaches 0.
+`reset()` starts an `setInterval` at 80 ms. Each tick subtracts `max(1, ceil(count × 0.15))` — roughly 15% of the current value. This gives a fast initial drop that slows as it approaches zero, which looks much cleaner than snapping to 0 instantly.
 
 ---
 
-## Optional features
+## Optional features added
 
-### Long-press for +5
-`Pressable` with `onLongPress` (400 ms delay) calls `longPressIncrement()`, which always adds 5. Long-press bypasses the 5th-increment bonus counter so rapid long-presses don't interfere with the bonus rhythm.
+### Long-press for instant +5
+`Pressable.onLongPress` (400 ms threshold) calls `longPressIncrement()`, which always adds 5 and does **not** advance the bonus counter. This means rapid long-presses don't interfere with the every-5th-press rule.
 
 ### Value history
-The last 10 values are stored in `history[]`. Each user action that changes the count prepends the new value. History is shown as a horizontal scrollable list of badges below the buttons. Auto-decrement ticks intentionally do not append to history to avoid flooding the list.
+The last 10 values are stored in `history[]` and shown as a horizontal scrollable list of badges. Auto-decrement ticks are intentionally excluded from history to avoid flooding it during idle decay.
 
 ---
 
-## Edge-case handling
+## Edge cases handled
 
 | Scenario | Behaviour |
 |---|---|
-| Rapid taps | `countRef` is updated synchronously so every tap reads the correct current value even before React re-renders |
-| Reset during auto-decrement | `reset()` calls `stopAutoDecrement()` first — cancels both the idle timeout and decrement interval |
-| Increment/decrement during gradual reset | Both call `stopReset()` first, clearing the reset interval immediately |
-| Reset when count is already 0 | Returns early — no interval is started |
-| Auto-decrement reaching 0 | The interval clears itself; `isAutoDecrementing` becomes false |
-| Unmount with active timers | `useEffect` cleanup calls `stopAutoDecrement()` and `stopReset()` |
+| Rapid taps | `countRef` is updated synchronously so every tap reads the latest value before React re-renders |
+| Reset during auto-decrement | `reset()` calls `stopAutoDecrement()` first |
+| Increment/decrement during gradual reset | Both call `stopReset()` first to cancel the interval immediately |
+| Reset when count is already 0 | Returns early — no interval starts |
+| Auto-decrement reaching 0 | Interval clears itself; flag becomes false |
+| Unmount with active timers | `useEffect` cleanup runs `stopAutoDecrement()` and `stopReset()` |
 
 ---
 
-## Project layout
+## Challenges and tradeoffs
+
+**Stale closures in timer callbacks** — The biggest gotcha was `setInterval` callbacks reading stale state. The ref-mirroring pattern solved it cleanly without reaching for `useReducer` or adding extra complexity.
+
+**Auto-decrement + history** — I chose not to push auto-decrement ticks to history. The alternative would be to limit them (e.g. only push every 5th tick), but skipping them entirely felt cleaner and matched what a user would actually want to review.
+
+**useState vs useReducer** — I considered `useReducer` early on. It would have made the timer callbacks simpler to reason about, but the action types would have grown complex to accommodate the gradual reset and auto-decrement lifecycles. Separate `useState` calls with refs turned out to be more readable.
+
+---
+
+## Project structure
 
 ```
 CounterPro/
 ├── src/
-│   └── useCounter.ts   ← all counter logic (custom hook)
-├── App.tsx             ← UI only, consumes the hook
-├── index.js            ← React Native entry point
+│   └── useCounter.ts   ← all counter logic (hook)
+├── App.tsx             ← UI only
+├── index.js            ← RN entry point
 └── README.md
 ```
 
@@ -84,13 +103,13 @@ CounterPro/
 # Android
 npm run android
 
-# iOS (macOS only — install pods first)
+# iOS
 cd ios && bundle exec pod install && cd ..
 npm run ios
 ```
 
 ---
 
-## TurboModule (C++ JSI) — coming on a separate branch
+## GitHub Repository
 
-A second branch (`turbomodule-implementation`) will re-implement the counter logic as a C++ TurboModule exposed via JSI, moving all business logic to native code and keeping JavaScript responsible only for UI and user interaction. Data will flow from C++ to JS via an EventEmitter subscription so the UI updates automatically when native state changes.
+[https://github.com/priyansh23dev/CounterPro](https://github.com/priyansh23dev/CounterPro)
