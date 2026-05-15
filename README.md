@@ -1,97 +1,96 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# CounterPro
 
-# Getting Started
+A React Native counter app demonstrating non-trivial state management, timer-driven behaviour, and clean separation between logic and UI.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+---
 
-## Step 1: Start Metro
+## Logic structure
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+All counter logic lives in **`src/useCounter.ts`** as a single custom hook. `App.tsx` is pure UI — it calls the hook and renders. No business logic lives in the component tree.
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+### State
 
-```sh
-# Using npm
-npm start
+| State | Type | Where |
+|---|---|---|
+| `count` | `number` | `useState` — drives the display |
+| `history` | `number[]` | `useState` — last 10 distinct values |
+| `isAutoDecrementing` | `boolean` | `useState` — UI status indicator |
+| `isResetting` | `boolean` | `useState` — UI status indicator |
+| `incrementCalls` | `number` | `useState` — counts calls to `increment()` for the bonus rule |
 
-# OR using Yarn
-yarn start
+**Why `useState` and not a reducer?**
+Each piece of state has a different update cadence. Keeping them separate lets React batch the updates that happen together (in user-triggered callbacks) while still allowing independent updates from timer callbacks. A reducer would have forced all state into one object and made the timer logic significantly more complex.
+
+**Refs for timer callbacks**
+`countRef` and `incrementCallsRef` mirror their corresponding state values so that `setInterval` / `setTimeout` callbacks always read the current value without depending on a stale closure. The pattern is: update the ref *and* call `setState` in the same synchronous pass.
+
+---
+
+## Non-trivial behaviours
+
+### 1. Every 5th increment gives +5
+`incrementCalls` tracks how many times the user has pressed Increment. When `incrementCalls % 5 === 0` the delta is 5 instead of 1. The UI shows a "NEXT BONUS IN N PRESSES" countdown and lights up "BONUS +5 READY" when the next press will trigger it.
+
+### 2. Decrement floor at 0
+`decrement()` returns early when `countRef.current <= 0`. The count never goes negative.
+
+### 3. Auto-decrement after idle
+After every user interaction, `scheduleAutoDecrement()` clears any pending idle timer and sets a new 3-second `setTimeout`. When it fires, a 1-second `setInterval` starts decrementing the counter until it reaches 0. Any new user interaction cancels both the idle timer and the decrement interval immediately.
+
+### 4. Gradual reset
+`reset()` starts a `setInterval` that fires every 80 ms. Each tick reduces the count by `max(1, ceil(count × 0.15))` — roughly 15 % of the remaining value. This produces a fast initial drop that slows as it approaches 0, giving a smooth visual decay rather than an instant jump. The interval clears itself (and `isResetting` becomes false) once count reaches 0.
+
+---
+
+## Optional features
+
+### Long-press for +5
+`Pressable` with `onLongPress` (400 ms delay) calls `longPressIncrement()`, which always adds 5. Long-press bypasses the 5th-increment bonus counter so rapid long-presses don't interfere with the bonus rhythm.
+
+### Value history
+The last 10 values are stored in `history[]`. Each user action that changes the count prepends the new value. History is shown as a horizontal scrollable list of badges below the buttons. Auto-decrement ticks intentionally do not append to history to avoid flooding the list.
+
+---
+
+## Edge-case handling
+
+| Scenario | Behaviour |
+|---|---|
+| Rapid taps | `countRef` is updated synchronously so every tap reads the correct current value even before React re-renders |
+| Reset during auto-decrement | `reset()` calls `stopAutoDecrement()` first — cancels both the idle timeout and decrement interval |
+| Increment/decrement during gradual reset | Both call `stopReset()` first, clearing the reset interval immediately |
+| Reset when count is already 0 | Returns early — no interval is started |
+| Auto-decrement reaching 0 | The interval clears itself; `isAutoDecrementing` becomes false |
+| Unmount with active timers | `useEffect` cleanup calls `stopAutoDecrement()` and `stopReset()` |
+
+---
+
+## Project layout
+
+```
+CounterPro/
+├── src/
+│   └── useCounter.ts   ← all counter logic (custom hook)
+├── App.tsx             ← UI only, consumes the hook
+├── index.js            ← React Native entry point
+└── README.md
 ```
 
-## Step 2: Build and run your app
+---
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+## Running the app
 
-### Android
-
-```sh
-# Using npm
+```bash
+# Android
 npm run android
 
-# OR using Yarn
-yarn android
-```
-
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
+# iOS (macOS only — install pods first)
+cd ios && bundle exec pod install && cd ..
 npm run ios
-
-# OR using Yarn
-yarn ios
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+---
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+## TurboModule (C++ JSI) — coming on a separate branch
 
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+A second branch (`turbomodule-implementation`) will re-implement the counter logic as a C++ TurboModule exposed via JSI, moving all business logic to native code and keeping JavaScript responsible only for UI and user interaction. Data will flow from C++ to JS via an EventEmitter subscription so the UI updates automatically when native state changes.
