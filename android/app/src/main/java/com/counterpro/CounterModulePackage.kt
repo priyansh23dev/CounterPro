@@ -8,19 +8,23 @@ import com.facebook.react.module.model.ReactModuleInfoProvider
 
 class CounterModulePackage : BaseReactPackage() {
 
+    // Use the literal so CounterModule's companion object (and loadLibrary) is
+    // never triggered during package scanning / bridge startup.
+    private val moduleName = "CounterModule"
+
     override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? =
-        if (name == CounterModule.NAME) CounterModule(reactContext) else null
+        if (name == moduleName) CounterModule(reactContext) else null
 
     override fun getReactModuleInfoProvider(): ReactModuleInfoProvider =
         ReactModuleInfoProvider {
             mapOf(
-                CounterModule.NAME to ReactModuleInfo(
-                    CounterModule.NAME, // name
-                    CounterModule.NAME, // className
-                    false,              // canOverrideExistingModule
-                    false,              // needsEagerInit
-                    false,              // isCxxModule
-                    true                // isTurboModule
+                moduleName to ReactModuleInfo(
+                    moduleName, // name
+                    moduleName, // className
+                    false,      // canOverrideExistingModule
+                    false,      // needsEagerInit
+                    false,      // isCxxModule
+                    true        // isTurboModule
                 )
             )
         }

@@ -17,14 +17,16 @@ class CounterModule(reactContext: ReactApplicationContext) :
     companion object {
         const val NAME = "CounterModule"
 
-        private const val IDLE_DELAY_MS       = 3000L
-        private const val AUTO_DEC_INTERVAL   = 1000L
-        private const val RESET_STEP_MS       = 80L
+        private const val IDLE_DELAY_MS     = 3000L
+        private const val AUTO_DEC_INTERVAL = 1000L
+        private const val RESET_STEP_MS     = 80L
+    }
 
-        init {
-            // Load the shared library built from CMakeLists.txt
-            System.loadLibrary("counterpro")
-        }
+    // Runs when the module is actually instantiated (JS requested it), not during
+    // package registration. This keeps loadLibrary away from the bridge startup
+    // critical path so it cannot disrupt PlatformConstants registration.
+    init {
+        System.loadLibrary("counterpro")
     }
 
     // ── JNI declarations (implemented in CounterCore / CounterJNI.cpp) ─────────
